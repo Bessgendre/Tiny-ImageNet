@@ -29,27 +29,44 @@ def TrainModel(net, train_iter, test_iter, loss, num_epochs, optimiser, device):
             test_acc = d2l.evaluate_accuracy_gpu(net, test_iter)
             print("epoch %d, loss %.4f, train acc %.3f, test acc %.3f" % (epoch + 1, train_l_sum / batch_count, train_acc_sum / n, test_acc))
             
-# write a class that defines a network that is suitable for the Tiny-ImageNet dataset
-class Residual(nn.Module):
-    def __init__(self, input_channels, num_channels, use_1x1conv=False, strides=1, **kwargs):
-        super().__init__(**kwargs)
-        self.conv1 = nn.Conv2d(input_channels, num_channels, kernel_size=3, padding=1, stride=strides)
-        self.conv2 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1)
-        if use_1x1conv:
-            self.conv3 = nn.Conv2d(input_channels, num_channels, kernel_size=1, stride=strides)
+# define a new dataset with pytorch Datasets class to load Tini-ImageNet dataset
+
+
+
+class TinyImageNet(torch.utils.data.Dataset):
+    def __init__(self, root, is_train=True, transform=None):
+        self.transform = transform
+        self.is_train = is_train
+        self.label_to_idx = {}
+        self.images = []
+        self.labels = []
+        self.classes = []
+        self.root = root
+        self.load()
+        
+    def load(self):
+        if self.is_train:
+            root = self.root + '/train'
         else:
-            self.conv3 = None
-        
-        self.bn1 = nn.BatchNorm2d(num_channels)
-        self.bn2 = nn.BatchNorm2d(num_channels)
-        self.relu = nn.ReLU(inplace=True)
-        
-    def forward(self, X):
-        Y = self.relu(self.bn1(self.conv1(X)))
-        Y = self.bn2(self.conv2(Y))
-        
-        if self.conv3:
-            X = self.conv3(X)
-            
-        return self.relu(Y + X)
+            root = self.root + '/val'
+        for label in os.listdir(root):
+            if label not in self.label_to_idx:
+                self.label_to_idx[label] = len(self.label_to_idx)
+                self.classes.append(label)
+            label_idx = self.label_to_idx[label]
+            label_path = root + '/' + label
+            for img_name in os.listdir(label_path):
+                img_path = label_path + '/' + img_name
+                self.images.append(img_path)
+                self.labels.append(label_idx)
+                
+    def __getitem__(self, index):
+        img = Image.open(self.images[index]).convert('RGB')
+        label = self.labels[index]
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, label
+    
+    def __len__(self):
+        return len(self.images)
     
