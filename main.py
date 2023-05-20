@@ -11,9 +11,22 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import models, utils, datasets, transforms
 
+import argparse
+
 # set device to GPU if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
+
+# set parameters
+parser = argparse.ArgumentParser(description='PyTorch Tiny-ImageNet Training')
+parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
+parser.add_argument('--epoch', default=3, type=int, help='number of epochs tp train for')
+parser.add_argument('--batch_size', default=64, type=int, help='batch size')
+parser.add_argument('--pre_epoch', default=0, type=int, help='number of epochs before training')
+parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay')
+parser.add_argument('--train_dir', default='tiny-imagenet-200/train', type=str, help='train directory')
+parser.add_argument('--test_dir', default='tiny-imagenet-200/val', type=str, help='test directory')
+args = parser.parse_args()
 
 # set hyperparameters
 EPOCH = 3
@@ -34,11 +47,11 @@ transform_test = transforms.Compose([
     transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
 ])
 
-trainset = datasets.ImageFolder(root='/Users/royalty/Desktop/Python_ML/Python-DL/second_assignment/tiny-imagenet-200/train', transform=transform_train)
-trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+trainset = datasets.ImageFolder(root=args.train_dir, transform=transform_train)
+trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
-testset = datasets.ImageFolder(root='/Users/royalty/Desktop/Python_ML/Python-DL/second_assignment/tiny-imagenet-200/val', transform=transform_test)
-testloader = DataLoader(testset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+testset = datasets.ImageFolder(root=args.test_dir, transform=transform_test)
+testloader = DataLoader(testset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
 # import a ResNet-18 model
 net = models.resnet18(pretrained=False, num_classes=200)
