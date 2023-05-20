@@ -13,7 +13,7 @@ from torchvision import models, utils, datasets, transforms
 
 import argparse
 
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 import datetime
 import os
@@ -197,3 +197,14 @@ if __name__ == '__main__':
                     best_acc = acc
                     
         print("Training Finished, TotalEPOCH=%d" % EPOCH)
+                
+                
+        
+    
+    
+
+
+
+    
+# save the model
+torch.save(net.state_dict(), ' /output/resnet18.pth')
