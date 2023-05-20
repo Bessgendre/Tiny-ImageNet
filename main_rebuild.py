@@ -13,11 +13,11 @@ from torchvision import models, utils, datasets, transforms
 
 import argparse
 
-from torch.utils.tensorboard import SummaryWriter
+# import tensorboard
+# from torch.utils.tensorboard import SummaryWriter
 
-import datetime
 import os
-
+    
 # set device to GPU if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
@@ -29,182 +29,145 @@ parser.add_argument('--epoch', default=3, type=int, help='number of epochs tp tr
 parser.add_argument('--batch_size', default=64, type=int, help='batch size')
 parser.add_argument('--pre_epoch', default=0, type=int, help='number of epochs before training')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay')
-parser.add_argument('--train_dir', default='tiny-imagenet-200/train', type=str, help='train directory')
-parser.add_argument('--test_dir', default='tiny-imagenet-200/val', type=str, help='test directory')
+parser.add_argument('--train_dir', default='/data/bitahub/Tiny-ImageNet/train', type=str, help='train directory')
+parser.add_argument('--test_dir', default='/data/bitahub/Tiny-ImageNet/test', type=str, help='test directory')
+parser.add_argument('--output', default='/output', help='folder to output images and model checkpoints') 
 args = parser.parse_args()
 
 # set hyperparameters
-EPOCH = 3
+EPOCH = 100
 pre_epoch = 0
 BATCH_SIZE = 64
 LR = 0.01
 
-# prepare Tiny-ImageNet dataset and preprocess it
-transform_train = transforms.Compose([
-    transforms.RandomCrop(64, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
-])
+# define a function that preporcesses the dataset
+def PreprocessDataset(train_dir, test_dir):
+    # prepare Tiny-ImageNet dataset and preprocess it
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(64, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
+    ])
 
-transform_test = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
-])
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
+    ])
 
-trainset = datasets.ImageFolder(root=args.train_dir, transform=transform_train)
-trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+    trainset = datasets.ImageFolder(root=train_dir, transform=transform_train)
+    trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
-testset = datasets.ImageFolder(root=args.test_dir, transform=transform_test)
-testloader = DataLoader(testset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+    testset = datasets.ImageFolder(root=test_dir, transform=transform_test)
+    testloader = DataLoader(testset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
-# import a ResNet-18 model
-net = models.resnet18(pretrained=False, num_classes=200)
-print(net)
+    return trainloader, testloader
 
-# define loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=5e-4)
+# write a function that prepares the network and do all things before training
+def PrepareNetwork():
+    net = models.resnet18(pretrained=False, num_classes=200)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=5e-4)
+    return net, criterion, optimizer
 
-# write a function to train the model
-# def train(epoch):
-#     print('\nEpoch: %d' % (epoch + 1))
-#     net.train()
-#     train_loss = 0
-#     correct = 0
-#     total = 0
-    
-#     for batch_idx, (inputs, targets) in enumerate(trainloader):
-#         inputs = inputs.to(device)
-#         targets = targets.to(device)
+# define a function that can adjust learning rate
+def adjust_learning_rate(optimizer, epoch):
+    lr = LR
+    if epoch > 80:
+        lr /= 100000
+    elif epoch > 60:
+        lr /= 10000
+    elif epoch > 40:
+        lr /= 1000
+    elif epoch > 20:
+        lr /= 100
         
-#         optimizer.zero_grad()
-        
-#         outputs = net(inputs)
-#         loss = criterion(outputs, targets)
-#         loss.backward()
-#         optimizer.step()
-        
-#         train_loss += loss.item()
-        
-#         _, predicted = outputs.max(1)
-#         total += targets.size(0)
-#         correct += predicted.eq(targets).sum().item()
-        
-#         # print loss every 50 batches
-#         if batch_idx % 50 == 0:
-#             print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
+# define a function that trains the network
+def TrainingNetwork(net, criterion, optimizer, trainloader, testloader):
+    net = net.to(device)
+    for epoch in range(pre_epoch, pre_epoch + EPOCH):
+        adjust_learning_rate(optimizer, epoch)
         
-# write a function to test the model
-# def test(epoch):
-#     global best_acc
-#     net.eval()
-#     test_loss = 0
-#     correct = 0
-#     total = 0
-    
-#     with torch.no_grad():
-#         for batch_idx, (inputs, targets) in enumerate(testloader):
-#             inputs = inputs.to(device)
-#             targets = targets.to(device)
+        print('\nEpoch: %d' % (epoch + 1))
+        net.train()
+        train_loss = 0
+        correct = 0
+        total = 0
             
-#             outputs = net(inputs)
-#             loss = criterion(outputs, targets)
+        for i , data in enumerate(trainloader):
+            inputs, labels = data
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             
-#             test_loss += loss.item()
+            optimizer.zero_grad()
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
             
-#             _, predicted = outputs.max(1)
-#             total += targets.size(0)
-#             correct += predicted.eq(targets).sum().item()
+            train_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
             
-#             # print loss every 50 batches
-#             if batch_idx % 50 == 0:
-#                 print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
-                
-# train the model
-if __name__ == '__main__':
-    print("Start Training...")
-    #生成图模型样例
-    dummy_input = torch.rand(4, 3, 224, 224)
-    
-    #指定 Tensorboard 存储路径  文件夹名称：时间_网络结构名称
-    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    logdir = os.path.join(
-        '/output', 'logs', current_time + '_' + "resnet18")
-    
-    #生成 Tensorboard writer，指定存储路径
-    with SummaryWriter(logdir) as writer:
-        #将模型写入 Tensorboard
-        writer.add_graph(net, (dummy_input,))
-        net.to(device)
-        for epoch in range(pre_epoch, pre_epoch + EPOCH):
-            
-            print('\nEpoch: %d' % (epoch + 1))
-            net.train()
-            train_loss = 0
+            # print training loss and accuracy after each 100 mini-batches
+            if i % 100 == 0:
+                print('Training Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss/(i+1), 100.*correct/total, correct, total))
+        
+        # test accuracy after each epoch
+        print("Waiting Test...")
+        with torch.no_grad():
             correct = 0
             total = 0
-            
-            for i , data in enumerate(trainloader):
-                inputs, labels = data
-                inputs = inputs.to(device)
+            for data in testloader:
+                net.eval()
+                images, labels = data
+                images = images.to(device)
                 labels = labels.to(device)
-                
-                optimizer.zero_grad()
-                outputs = net(inputs)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                
-                train_loss += loss.item()
-                _, predicted = outputs.max(1)
+                outputs = net(images)
+                _, predicted = torch.max(outputs.data, dim=1)
                 total += labels.size(0)
-                correct += predicted.eq(labels).sum().item()
-                
-                # print loss every 50 batches
-                if i % 50 == 0:
-                    print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss/(i+1), 100.*correct/total, correct, total))
-                    #将 loss 写入 Tensorboard
-                    writer.add_scalar('Train/Loss', train_loss/(i+1), epoch)
-                    #将 accuracy 写入 Tensorboard
-                    writer.add_scalar('Train/Accuracy', 100.*correct/total, epoch)
+                correct += (predicted == labels).sum().item()
             
-            # test accuracy after each epoch
-            print("Waiting Test...")
-            with torch.no_grad():
-                correct = 0
-                total = 0
-                for data in testloader:
-                    net.eval()
-                    images, labels = data
-                    images = images.to(device)
-                    labels = labels.to(device)
-                    outputs = net(images)
-                    _, predicted = torch.max(outputs.data, dim=1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
+            # save the first epoch model
+            if epoch == 0:
+                best_acc = 100.*correct/total
+                print('Saving model...')
+                torch.save(net.state_dict(), '%s/final_net.pth' % (args.output))
+                flag = 0
+            
+            print('Test Accuracy of the model on the test images: %.3f%% (%d/%d)' % (100 * correct / total, correct, total))
+            
+            
+            # compare current accuracy with previous best accuracy, save the better one
+            acc = 100.*correct/total
+            if acc > best_acc:
+                print('Saving model...')
+                torch.save(net.state_dict(), '%s/final_net.pth' % (args.output))
+                best_acc = acc
+                flag = 0
                 
-                print('Test Accuracy of the model on the test images: %.3f%% (%d/%d)' % (100 * correct / total, correct, total))
-                #将 test accuracy 写入 Tensorboard
-                writer.add_scalar('Test/Accuracy', 100 * correct / total, epoch)
+            if epoch > 50 and flag > 7:
+                break
+            else:
+                flag += 1
                 
-                # save the best model
-                acc = 100. * correct / total
-                if acc > best_acc:
-                    print("Saving Best Model...")
-                    torch.save(net.state_dict(), '/output/resnet18.pth')
-                    best_acc = acc
-                    
-        print("Training Finished, TotalEPOCH=%d" % EPOCH)
-                
-                
+        print("Training Finished, TotalEPOCH = %d, PlanedEPOCH = %d" % epoch, EPOCH)
         
+# main fuction that when called, will start all those process
+def main():
+    print("Preprocessing Dataset...")
+    trainloader, testloader = PreprocessDataset(args.train_dir, args.test_dir)
     
+    print("Preparing Network...")
+    net, criterion, optimizer = PrepareNetwork()
     
+    print("Start Training...")
+    TrainingNetwork(net, criterion, optimizer, trainloader, testloader)
 
 
-
-    
-# save the model
-torch.save(net.state_dict(), ' /output/resnet18.pth')
+if __name__ == '__main__':
+    main()
