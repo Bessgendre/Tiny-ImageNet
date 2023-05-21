@@ -192,13 +192,17 @@ def PrepareNetwork():
 # define a function that can adjust learning rate
 def adjust_learning_rate(optimizer, epoch):
     lr = LR
-    if epoch > 80:
+    if epoch > 90:
         lr /= 100000
-    elif epoch > 60:
-        lr /= 10000
-    elif epoch > 40:
+    if epoch > 75:
+        lr /= 50000
+    if epoch > 60:
+        lr /= 12500
+    elif epoch > 45:
+        lr /= 4000
+    elif epoch > 30:
         lr /= 1000
-    elif epoch > 20:
+    elif epoch > 15:
         lr /= 100
         
     for param_group in optimizer.param_groups:
