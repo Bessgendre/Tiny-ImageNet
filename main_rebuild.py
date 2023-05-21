@@ -13,10 +13,11 @@ from torchvision import models, utils, datasets, transforms
 
 import argparse
 
-# import tensorboard
-# from torch.utils.tensorboard import SummaryWriter
 
+# import tensorboard
+from torch.utils.tensorboard import SummaryWriter
 import os
+from datetime import datetime
     
 # set device to GPU if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -85,7 +86,84 @@ def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-# define a function that trains the network
+# define a function that trains the network with tensorboard visualization
+def TrainingNetworkWithTensorboard(net, criterion, optimizer, trainloader, testloader):
+    net = net.to(device)
+    
+    #指定 Tensorboard 存储路径  文件夹名称：时间_网络结构名称
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    
+    logdir = os.path.join(
+        '/output', 'logs', current_time + '_' + "resnet18")
+    
+    #创建一个 SummaryWriter 对象
+    writer = SummaryWriter(logdir)
+    
+    for epoch in range(pre_epoch, pre_epoch + EPOCH):
+        adjust_learning_rate(optimizer, epoch)
+        # write learning rate to tensorboard
+        writer.add_scalar('training/learning_rate', optimizer.param_groups[0]['lr'], epoch)
+        
+        print('\nEpoch: %d' % (epoch + 1))
+        net.train()
+        train_loss = 0
+        correct = 0
+        total = 0
+            
+        for i , data in enumerate(trainloader):
+            inputs, labels = data
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            
+            optimizer.zero_grad()
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            
+            train_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+            
+            # write training loss and accuracy to tensorboard
+            writer.add_scalar('training/train_loss', train_loss/(i+1), epoch)
+            writer.add_scalar('training/train_acc', 100.*correct/total, epoch)
+            
+            
+            # print training loss and accuracy after each 100 mini-batches
+            if i % 100 == 0:
+                print('Training Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss/(i+1), 100.*correct/total, correct, total))
+        
+        # test accuracy after each epoch
+        print("Waiting Test...")
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for data in testloader:
+                net.eval()
+                images, labels = data
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = net(images)
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum()
+                
+            print('Test Accuracy: %.3f%% (%d/%d)' % (100.*correct/total, correct, total))
+        
+        # add loss and accuracy to tensorboard
+        writer.add_scalar('/testing/test_accuracy', 100.*correct/total, epoch)
+        
+        # add model parameters to tensorboard
+        for name, param in net.named_parameters():
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
+        
+        # save model
+        torch.save(net.state_dict(), '/output/resnet18.pth')
+            
+
+
 def TrainingNetwork(net, criterion, optimizer, trainloader, testloader):
     net = net.to(device)
     for epoch in range(pre_epoch, pre_epoch + EPOCH):
@@ -150,12 +228,11 @@ def TrainingNetwork(net, criterion, optimizer, trainloader, testloader):
                 best_acc = acc
                 flag = 0
                 
-            if epoch > 50 and flag > 7:
+            if epoch > 10 and flag > 7:
                 break
             else:
                 flag += 1
-                
-        print("Training Finished, TotalEPOCH = %d, PlanedEPOCH = %d" % epoch, EPOCH)
+    return epoch, best_acc
         
 # main fuction that when called, will start all those process
 def main():
@@ -166,8 +243,13 @@ def main():
     net, criterion, optimizer = PrepareNetwork()
     
     print("Start Training...")
-    TrainingNetwork(net, criterion, optimizer, trainloader, testloader)
-
+    # real_epoch, best_accuracy = TrainingNetwork(net, criterion, optimizer, trainloader, testloader)
+    TrainingNetworkWithTensorboard(net, criterion, optimizer, trainloader, testloader)
+    
+    print("Training Finished!")
+    # print("Total epochs: %d" % (real_epoch + 1))
+    print("Planed epochs: %d" % (EPOCH))
+    # print("Best Accuracy: %.3f%%" % (best_accuracy))
 
 if __name__ == '__main__':
     main()
