@@ -17,6 +17,11 @@ import argparse
 # from torch.utils.tensorboard import SummaryWriter
 
 import os
+
+# import Image
+from PIL import Image
+
+
     
 # set device to GPU if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -29,6 +34,7 @@ parser.add_argument('--epoch', default=3, type=int, help='number of epochs tp tr
 parser.add_argument('--batch_size', default=64, type=int, help='batch size')
 parser.add_argument('--pre_epoch', default=0, type=int, help='number of epochs before training')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay')
+parser.add_argument('--root_dir', default='/data/bitahub/Tiny-ImageNet', type=str, help='dataset root directory')
 parser.add_argument('--train_dir', default='/data/bitahub/Tiny-ImageNet/train', type=str, help='train directory')
 parser.add_argument('--test_dir', default='/data/bitahub/Tiny-ImageNet/test', type=str, help='test directory')
 parser.add_argument('--output', default='/output', help='folder to output images and model checkpoints') 
@@ -40,8 +46,45 @@ pre_epoch = 0
 BATCH_SIZE = 64
 LR = 0.01
 
+# write a class that can read the Tiny-ImageNet dataset, the labels are stored in val_annotations.txt
+class TinyImageNetDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        
+        # read the labels
+        self.var_annotations = {}
+        with open(os.path.join(root_dir, 'val','val_annotations.txt'), 'r') as f:
+            for line in f.readlines():
+                line = line.strip('\n')
+                line = line.split('\t')
+                self.var_annotations[line[0]] = line[1]
+        
+        # read the images
+        self.images = []
+        self.labels = []
+        for key in self.var_annotations.keys():
+            for i in range(500):
+                self.images.append(os.path.join(root_dir, 'train','images', key, key + '_' + str(i) + '.JPEG'))
+                self.labels.append(self.var_annotations[key])
+        
+    def __len__(self):
+        return len(self.images)
+    
+    def __getitem__(self, idx):
+        image = Image.open(self.images[idx])
+        label = self.labels[idx]
+        
+        if self.transform:
+            image = self.transform(image)
+            
+        return image, label
+
+
+
+
 # define a function that preporcesses the dataset
-def PreprocessDataset(train_dir, test_dir):
+def PreprocessDataset(root_directory):
     # prepare Tiny-ImageNet dataset and preprocess it
     transform_train = transforms.Compose([
         transforms.RandomCrop(64, padding=4),
@@ -55,10 +98,10 @@ def PreprocessDataset(train_dir, test_dir):
         transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
     ])
 
-    trainset = datasets.ImageFolder(root=train_dir, transform=transform_train)
+    trainset = TinyImageNetDataset(root_dir=root_directory, transform=transform_train)
     trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
-    testset = datasets.ImageFolder(root=test_dir, transform=transform_test)
+    testset = TinyImageNetDataset(root_dir=root_directory, transform=transform_test)
     testloader = DataLoader(testset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
     return trainloader, testloader
@@ -154,20 +197,23 @@ def TrainingNetwork(net, criterion, optimizer, trainloader, testloader):
                 break
             else:
                 flag += 1
-                
-        print("Training Finished, TotalEPOCH = %d, PlanedEPOCH = %d" % epoch, EPOCH)
+    return epoch, best_acc
         
 # main fuction that when called, will start all those process
 def main():
     print("Preprocessing Dataset...")
-    trainloader, testloader = PreprocessDataset(args.train_dir, args.test_dir)
+    trainloader, testloader = PreprocessDataset(args.root_dir)
     
     print("Preparing Network...")
     net, criterion, optimizer = PrepareNetwork()
     
     print("Start Training...")
-    TrainingNetwork(net, criterion, optimizer, trainloader, testloader)
-
+    real_epoch, best_accuracy = TrainingNetwork(net, criterion, optimizer, trainloader, testloader)
+    
+    print("Training Finished!")
+    print("Total epochs: %d" % (real_epoch + 1))
+    print("Planed epochs: %d" % (EPOCH))
+    print("Best Accuracy: %.3f%%" % (best_accuracy))
 
 if __name__ == '__main__':
     main()
