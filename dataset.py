@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 
 from PIL import Image
 
+# a class specialized for Tiny-ImageNet that can read it correctly
 class TinyImageNet(Dataset):
     def __init__(self, root, train=True, transform=None):
         self.Train = train

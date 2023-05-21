@@ -11,8 +11,14 @@ from dataset import TinyImageNet
 def PreprocessDataset(root_dir, BATCH_SIZE):
     # prepare Tiny-ImageNet dataset and preprocess it
     transform_train = transforms.Compose([
+        # data augmentation
         transforms.RandomCrop(64, padding=4),
         transforms.RandomHorizontalFlip(),
+        # whiten the image
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0),
+        # add gaussian noise from scratch
+        
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.5),
         transforms.ToTensor(),
         transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2302, 0.2265, 0.2262))
     ])
@@ -34,24 +40,18 @@ def PreprocessDataset(root_dir, BATCH_SIZE):
 def PrepareNetwork(initial_lr):
     net = models.resnet18(pretrained=False, num_classes=200)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=initial_lr, momentum=0.9, weight_decay=5e-4)
+    
+    # use Adam optimizer
+    optimizer = optim.Adam(net.parameters(), lr=initial_lr, weight_decay=5e-4)
     return net, criterion, optimizer
 
-# define a function that can adjust learning rate
+# write a function that adjusts the learning rate
 def AdjustLearningRate(optimizer, epoch, initial_lr):
     lr = initial_lr
-    if epoch > 90:
-        lr /= 100000
-    if epoch > 75:
-        lr /= 50000
-    if epoch > 60:
-        lr /= 12500
-    elif epoch > 45:
-        lr /= 4000
-    elif epoch > 30:
-        lr /= 1000
-    elif epoch > 15:
-        lr /= 100
-        
+    if epoch >= 80:
+        lr /= 10
+    if epoch >= 90:
+        lr /= 10
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+        
