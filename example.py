@@ -237,8 +237,9 @@ def main_worker(gpu, ngpus_per_node, args):
         transform_train = transforms.Compose([
             transforms.RandomCrop(64, padding=4),
             transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0),
-            transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.5),transforms.ToTensor(),
+            # transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0),
+            # transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.5),
+            transforms.ToTensor(),
             normalize,
         ])
 
@@ -293,6 +294,9 @@ def main_worker(gpu, ngpus_per_node, args):
     logdir = os.path.join(
         '/output', 'logs', current_time + '_' + "resnet18")
     writer = SummaryWriter(logdir)
+    
+    # # print the structure of the model to Tensorboard
+    # writer.add_graph(model, torch.zeros(1, 3, 64, 64).to(device))
     
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
