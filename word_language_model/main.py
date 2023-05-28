@@ -54,6 +54,8 @@ parser.add_argument('--nhead', type=int, default=2,
                     help='the number of heads in the encoder/decoder of the transformer model')
 parser.add_argument('--dry-run', action='store_true',
                     help='verify the code and the model')
+parser.add_argument('--temperature', type=float, default=1.0,
+                    help='temperature - higher will increase diversity')
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
@@ -277,4 +279,40 @@ if len(args.onnx_export) > 0:
     export_onnx(args.onnx_export, batch_size=1, seq_len=args.bptt)
     
 # save the model
-torch.save(model.state_dict(), '/output/model.pt')
+# torch.save(model.state_dict(), '/output/model.pt')
+# torch.save(model.state_dict(), os.path.join('/output', 'model.pth'))
+
+# generate words
+model.eval()
+
+corpus = data.Corpus('./data/wikitext-2')
+ntokens = len(corpus.dictionary)
+
+is_transformer_model = hasattr(model, 'model_type') and model.model_type == 'Transformer'
+if not is_transformer_model:
+    hidden = model.init_hidden(1)
+input = torch.randint(ntokens, (1, 1), dtype=torch.long).to(device)
+
+with open('/output/generated.txt', 'w') as outf:
+    with torch.no_grad():  # no tracking history
+        for i in range(1000):
+            if is_transformer_model:
+                output = model(input, False)
+                word_weights = output[-1].squeeze().div(args.temperature).exp().cpu()
+                word_idx = torch.multinomial(word_weights, 1)[0]
+                word_tensor = torch.Tensor([[word_idx]]).long().to(device)
+                input = torch.cat([input, word_tensor], 0)
+            else:
+                output, hidden = model(input, hidden)
+                word_weights = output.squeeze().div(args.temperature).exp().cpu()
+                word_idx = torch.multinomial(word_weights, 1)[0]
+                input.fill_(word_idx)
+
+            word = corpus.dictionary.idx2word[word_idx]
+
+            outf.write(word + ('\n' if i % 20 == 19 else ' '))
+
+            if i % args.log_interval == 0:
+                print('| Generated {}/{} words'.format(i, 1000))
+                
+print(word)
