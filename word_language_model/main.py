@@ -10,6 +10,9 @@ import torch.onnx
 import data
 import model
 
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM/GRU/Transformer Language Model')
 parser.add_argument('--data', type=str, default='./data/wikitext-2',
                     help='location of the data corpus')
@@ -43,7 +46,7 @@ parser.add_argument('--mps', action='store_true', default=False,
                         help='enables macOS GPU training')
 parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                     help='report interval')
-parser.add_argument('--save', type=str, default='model.pt',
+parser.add_argument('--save', type=str, default='/output/model.pt',
                     help='path to save the final model')
 parser.add_argument('--onnx-export', type=str, default='',
                     help='path to export the final model in onnx format')
@@ -111,6 +114,15 @@ if args.model == 'Transformer':
     model = model.TransformerModel(ntokens, args.emsize, args.nhead, args.nhid, args.nlayers, args.dropout).to(device)
 else:
     model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.tied).to(device)
+
+# set Tensorboard directory
+current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+logdir = os.path.join(
+    '/output', 'logs', current_time + '_' + "language_model")
+writer = SummaryWriter(logdir)
+    
+# draw the strcture of the model with tensorboard
+writer.add_graph(model, torch.zeros(args.bptt, args.batch_size).long())
 
 criterion = nn.NLLLoss()
 
@@ -204,6 +216,9 @@ def train():
             start_time = time.time()
         if args.dry_run:
             break
+        
+        # write to tensorboard
+        writer.add_scalar('loss', loss.item(), epoch * len(train_data) + batch)
 
 
 def export_onnx(path, batch_size, seq_len):
@@ -260,3 +275,6 @@ print('=' * 89)
 if len(args.onnx_export) > 0:
     # Export the model in ONNX format.
     export_onnx(args.onnx_export, batch_size=1, seq_len=args.bptt)
+    
+# save the model
+torch.save(model.state_dict(), '/output/model.pt')
